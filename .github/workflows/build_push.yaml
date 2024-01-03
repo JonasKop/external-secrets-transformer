@@ -37,6 +37,6 @@ jobs:
 
       - name: Create release
         if: github.ref_name == 'main'
-        uses: jonaskop/custom-github-actions/create-release@40-allow-file-uploads-in-create-release
+        uses: jonaskop/custom-github-actions/create-release@main
         with:
           files: "external-secrets-transformer-amd64"

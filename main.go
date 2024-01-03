@@ -7,12 +7,14 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
 
+// External Secrets data structures
 type SecretStoreRef struct {
 	Name string
 	Kind string
@@ -42,6 +44,7 @@ type ExternalSecretSpec struct {
 	Data            []SingleData
 }
 
+// Get environment variable or panic
 func getEnvPanic(name string) string {
 	value := os.Getenv(name)
 	if len(value) == 0 {
@@ -50,6 +53,7 @@ func getEnvPanic(name string) string {
 	return value
 }
 
+// Get environment variable or use default value
 func getEnvDefault(name, defaultValue string) string {
 	value := os.Getenv(name)
 	if len(value) > 0 {
@@ -58,6 +62,7 @@ func getEnvDefault(name, defaultValue string) string {
 	return defaultValue
 }
 
+// Create basic external secret spec
 func createBasicExternalSecretSpec() ExternalSecretSpec {
 	return ExternalSecretSpec{
 		RefreshInterval: getEnvDefault("REFRESH_INTERVAL", "1h"),
@@ -72,11 +77,14 @@ func createBasicExternalSecretSpec() ExternalSecretSpec {
 	}
 }
 
+// Parse k8s secret string data and data into non base64 data
 func parseStringDataAndData(secretManifest map[string]interface{}) map[string]interface{} {
+	// If secretData just use it
 	data := make(map[string]interface{})
 	if secretManifest["stringData"] != nil {
 		data = secretManifest["stringData"].(map[string]interface{})
 	}
+	// If data, convert all from base64 to ordinary strings
 	if secretManifest["data"] != nil {
 		for k, v := range secretManifest["data"].(map[string]interface{}) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(v.(string))
@@ -90,15 +98,18 @@ func parseStringDataAndData(secretManifest map[string]interface{}) map[string]in
 	return data
 }
 
+// Get keyvault variables from a data map
 func getKeyvaultVariables(data map[string]interface{}) []string {
 	var keyvaultKeys []string
 
 	for _, v := range data {
+		// Search for {{ SOMETHING }}
 		r := regexp.MustCompile(`\{{([^}]+)\}}`)
 		matches := r.FindAllString(v.(string), -1)
 		for _, match := range matches {
 			formatted := match[2 : len(match)-2]
 			words := strings.Fields(formatted)
+			// Only save keys matching {{ .VALUE }}
 			for _, w := range words {
 				if w[0] == '.' {
 					keyvaultKeys = append(keyvaultKeys, w)
@@ -111,14 +122,17 @@ func getKeyvaultVariables(data map[string]interface{}) []string {
 	return keyvaultKeys
 }
 
+// Create an externalsecrets object from the secret and parsed data
 func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys []string) map[string]interface{} {
 	// Create external secret spec
 	spec := createBasicExternalSecretSpec()
 
+	// Create template data section with values
 	for k, v := range data {
 		spec.Target.Template.Data[k] = v.(string)
 	}
 
+	// Create data remote reference with values
 	for _, key := range keyvaultKeys {
 		if !strings.HasPrefix(key, ".") {
 			panic("ERROR: Key is missing '.' prefix '" + key + "'")
@@ -128,6 +142,8 @@ func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys [
 			RemoteRef: RemoteRef{Key: key[1:]},
 		})
 	}
+
+	// Set k8s external secrets object info
 	doc["kind"] = "ExternalSecret"
 	doc["apiVersion"] = "external-secrets.io/v1beta1"
 	delete(doc, "data")
@@ -135,15 +151,13 @@ func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys [
 	doc["spec"] = spec
 	delete(doc, "type")
 
+	sort.Slice(spec.Data, func(i, j int) bool { return spec.Data[i].SecretKey < spec.Data[j].SecretKey })
 	return doc
 }
 
-func main() {
-
-	bytes12, _ := io.ReadAll(os.Stdin)
-
-	dec := yaml.NewDecoder(bytes.NewReader(bytes12))
-
+func TransformManifest(dec *yaml.Decoder) string {
+	manifest := ""
+	// For each yaml document
 	for {
 		var doc map[string]interface{}
 		if dec.Decode(&doc) != nil {
@@ -152,8 +166,10 @@ func main() {
 		if doc == nil {
 			continue
 		}
+
 		kind := doc["kind"].(string)
 		apiVersion := doc["apiVersion"].(string)
+		// If it is a secret, try to convert it
 		if kind == "Secret" && apiVersion == "v1" {
 			// Convert data from base64 and merge stringData with data
 			data := parseStringDataAndData(doc)
@@ -161,16 +177,25 @@ func main() {
 			// Find all keyvault variables
 			keyvaultKeys := getKeyvaultVariables(data)
 
+			// Only convert the secrets with references to keyvault secrets
 			if len(keyvaultKeys) > 0 {
 				doc = createExternalSecretObject(data, doc, keyvaultKeys)
 			}
-
 		}
+		// Create output document
 		var b bytes.Buffer
 		yamlEncoder := yaml.NewEncoder(&b)
 		yamlEncoder.SetIndent(2)
 		yamlEncoder.Encode(&doc)
-		fmt.Println(string(b.Bytes()))
-		fmt.Println("---")
+		manifest += b.String()
+		manifest += "---\n"
 	}
+	return manifest
+}
+
+func main() {
+	bytes12, _ := io.ReadAll(os.Stdin)
+	dec := yaml.NewDecoder(bytes.NewReader(bytes12))
+	manifest := TransformManifest(dec)
+	fmt.Println(manifest)
 }

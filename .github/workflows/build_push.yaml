@@ -26,6 +26,9 @@ jobs:
       - name: Build code
         run: make
 
+      - name: Run tests
+        run: go test -v
+
       - name: Set version
         if: github.ref_name == 'main'
         uses: jonaskop/custom-github-actions/set-version@main

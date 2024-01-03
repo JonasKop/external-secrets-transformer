@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers: []
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresCredentials
+  namespace: "default"
+  labels:
+    some-label: yup
+    some-other-label: nope
+  annotation:
+    some-annotation: nope
+    some-other-annotation: yihoo
+type: Opaque
+data:
+  postgresUsername: "e3sgLnBvc3RncmVzUGFzc3dvcmQgfX0="
+  postgresPassword: "e3sgLnBvc3RncmVzVXNlcm5hbWUgfX0="
+  postgresHostname: "bG9jYWxob3N0"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mariadbCredentials
+  namespace: "default"
+  labels:
+    some-label: yup
+    some-other-label: nope
+  annotation:
+    some-annotation: nope
+    some-other-annotation: yihoo
+type: Opaque
+stringData:
+  mariadbUsername: "{{ .vaultMariadbUsername }}"
+  mariadbPassword: "some_password"
+  mariadbHostname: "{{ .vaultMariadbHostname }}"
+---
+

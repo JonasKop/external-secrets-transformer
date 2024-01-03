@@ -1,0 +1,39 @@
+name: Build and push external-secrets-transformer
+
+on:
+  push:
+    paths:
+      - "**"
+      - "!README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: get_version
+        uses: jonaskop/custom-github-actions/get-version@main
+
+      - name: Build code
+        run: make
+
+      - name: Set version
+        if: github.ref_name == 'main'
+        uses: jonaskop/custom-github-actions/set-version@main
+        with:
+          version: ${{ env.VERSION }}
+
+      - name: Create release
+        if: github.ref_name == 'main'
+        uses: jonaskop/custom-github-actions/create-release@40-allow-file-uploads-in-create-release
+        with:
+          files: "external-secrets-transformer-amd64"

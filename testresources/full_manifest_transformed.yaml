@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers: []
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  annotation:
+    some-annotation: nope
+    some-other-annotation: yihoo
+  labels:
+    some-label: yup
+    some-other-label: nope
+  name: postgresCredentials
+  namespace: default
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: my-test-store
+    kind: ClusterSecretStore
+  target:
+    template:
+      data:
+        postgresHostname: localhost
+        postgresPassword: '{{ .postgresUsername }}'
+        postgresUsername: '{{ .postgresPassword }}'
+  data:
+    - secretKey: postgresPassword
+      remoteRef:
+        key: postgresPassword
+    - secretKey: postgresUsername
+      remoteRef:
+        key: postgresUsername
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  annotation:
+    some-annotation: nope
+    some-other-annotation: yihoo
+  labels:
+    some-label: yup
+    some-other-label: nope
+  name: mariadbCredentials
+  namespace: default
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: my-test-store
+    kind: ClusterSecretStore
+  target:
+    template:
+      data:
+        mariadbHostname: '{{ .vaultMariadbHostname }}'
+        mariadbPassword: some_password
+        mariadbUsername: '{{ .vaultMariadbUsername }}'
+  data:
+    - secretKey: vaultMariadbHostname
+      remoteRef:
+        key: vaultMariadbHostname
+    - secretKey: vaultMariadbUsername
+      remoteRef:
+        key: vaultMariadbUsername
+---

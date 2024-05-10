@@ -1,0 +1,77 @@
+apiVersion: config.kubernetes.io/v1
+functionConfig:
+  apiVersion: sjoedin.se
+  kind: ExternalSecretsTransformer
+  metadata:
+    annotations:
+      config.kubernetes.io/function: "exec: \n  path: ../plugins/external-secrets-transformer.sh\n"
+      config.kubernetes.io/local-config: "true"
+    name: external-secrets-transformer
+  spec:
+    storeKind: ClusterSecretStore
+    storeName: my-test-store
+items:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      annotations:
+        config.k8s.io/id: "1"
+        config.kubernetes.io/index: "0"
+        internal.config.kubernetes.io/annotations-migration-resource-id: "0"
+        internal.config.kubernetes.io/id: "1"
+        internal.config.kubernetes.io/index: "0"
+        kustomize.config.k8s.io/id: |
+          kind: Secret
+          name: passwordthing
+          namespace: default
+          version: v1
+      labels:
+        app.kubernetes.io/instance: my-release
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/version: 16.2.0
+        helm.sh/chart: postgresql-15.2.9
+      name: passwordthing
+      namespace: default
+    stringData:
+      postgres-password: somePassword
+    type: Opaque
+  - apiVersion: external-secrets.io/v1beta1
+    kind: ExternalSecret
+    metadata:
+      annotations:
+        config.k8s.io/id: "2"
+        config.kubernetes.io/index: "1"
+        internal.config.kubernetes.io/annotations-migration-resource-id: "1"
+        internal.config.kubernetes.io/id: "2"
+        internal.config.kubernetes.io/index: "1"
+        kustomize.config.k8s.io/id: |
+          kind: Secret
+          name: password
+          namespace: default
+          version: v1
+      labels:
+        app.kubernetes.io/instance: my-release
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/version: 16.2.0
+        helm.sh/chart: postgresql-15.2.9
+      name: password
+      namespace: default
+    spec:
+      refreshInterval: 1h
+      secretStoreRef:
+        name: my-test-store
+        kind: ClusterSecretStore
+      target:
+        template:
+          data:
+            banan: hej
+            postgres-password: '{{ .postgresPassword }}'
+            tjosan: null
+      data:
+        - secretKey: postgresPassword
+          remoteRef:
+            key: postgresPassword
+kind: ResourceList
+---

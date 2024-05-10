@@ -24,7 +24,7 @@ jobs:
         uses: jonaskop/custom-github-actions/get-version@main
 
       - name: Build code
-        run: make
+        run: make all
 
       - name: Run tests
         run: go test -v
@@ -39,4 +39,6 @@ jobs:
         if: github.ref_name == 'main'
         uses: jonaskop/custom-github-actions/create-release@main
         with:
-          files: "external-secrets-transformer-amd64"
+          files: |
+            external-secrets-transformer-linux-amd64
+            external-secrets-transformer-macos-amd64

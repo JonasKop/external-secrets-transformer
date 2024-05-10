@@ -10,7 +10,7 @@ import (
 
 func TestEmptyInputProducesEmptyResult(t *testing.T) {
 	dec := yaml.NewDecoder(bytes.NewReader([]byte("")))
-	manifest := TransformManifest(dec)
+	manifest := TransformFullManifest(dec)
 	if len(manifest) != 0 {
 		t.Fatalf("Expected manifest to be empty")
 	}
@@ -33,7 +33,7 @@ func TestFullManifest(t *testing.T) {
 	os.Setenv("STORE_KIND", "ClusterSecretStore")
 
 	dec := yaml.NewDecoder(bytes.NewReader(testManifestBytes))
-	manifest := TransformManifest(dec)
+	manifest := TransformFullManifest(dec)
 
 	if manifest != string(resultManifestBytes) {
 		t.Fatalf("Manifest mismatch")
@@ -51,7 +51,7 @@ func TestInvalidKeyvaultSecretRefShouldNotTransform(t *testing.T) {
 	os.Setenv("STORE_KIND", "ClusterSecretStore")
 
 	dec := yaml.NewDecoder(bytes.NewReader(testManifestBytes))
-	manifest := TransformManifest(dec)
+	manifest := TransformFullManifest(dec)
 	if manifest != string(testManifestBytes) {
 		t.Fatalf("Manifest mismatch")
 	}

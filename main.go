@@ -21,7 +21,7 @@ type SecretStoreRef struct {
 }
 
 type Template struct {
-	Data map[string]string
+	Data map[string]*string
 }
 
 type Target struct {
@@ -62,6 +62,11 @@ func getEnvDefault(name, defaultValue string) string {
 	return defaultValue
 }
 
+func printYaml(items interface{}) {
+	yb, _ := yaml.Marshal(items)
+	fmt.Println(string(yb))
+}
+
 // Create basic external secret spec
 func createBasicExternalSecretSpec() ExternalSecretSpec {
 	return ExternalSecretSpec{
@@ -71,7 +76,7 @@ func createBasicExternalSecretSpec() ExternalSecretSpec {
 			Kind: getEnvPanic("STORE_KIND"),
 		},
 		Target: Target{Template: Template{
-			Data: make(map[string]string),
+			Data: make(map[string]*string),
 		}},
 		Data: make([]SingleData, 0),
 	}
@@ -105,6 +110,9 @@ func getKeyvaultVariables(data map[string]interface{}) []string {
 	for _, v := range data {
 		// Search for {{ SOMETHING }}
 		r := regexp.MustCompile(`\{{([^}]+)\}}`)
+		if v == nil {
+			continue
+		}
 		matches := r.FindAllString(v.(string), -1)
 		for _, match := range matches {
 			formatted := match[2 : len(match)-2]
@@ -129,7 +137,12 @@ func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys [
 
 	// Create template data section with values
 	for k, v := range data {
-		spec.Target.Template.Data[k] = v.(string)
+		if v == nil {
+			spec.Target.Template.Data[k] = nil
+		} else {
+			tmp := v.(string)
+			spec.Target.Template.Data[k] = &tmp
+		}
 	}
 
 	// Create data remote reference with values
@@ -155,7 +168,35 @@ func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys [
 	return doc
 }
 
-func TransformManifest(dec *yaml.Decoder) string {
+func transformManifest(doc map[string]interface{}) map[string]interface{} {
+	kind := doc["kind"].(string)
+	apiVersion := doc["apiVersion"].(string)
+	// If it is a secret, try to convert it
+	if kind == "Secret" && apiVersion == "v1" {
+		// Convert data from base64 and merge stringData with data
+		data := parseStringDataAndData(doc)
+
+		// Find all keyvault variables
+		keyvaultKeys := getKeyvaultVariables(data)
+
+		// Only convert the secrets with references to keyvault secrets
+		if len(keyvaultKeys) > 0 {
+			return createExternalSecretObject(data, doc, keyvaultKeys)
+		}
+		// If kustomize ResourceList
+	} else if apiVersion == "config.kubernetes.io/v1" && kind == "ResourceList" {
+		items := doc["items"].([]interface{})
+		// Transform all items
+		for i, item := range items {
+			resource := item.(map[string]interface{})
+			items[i] = transformManifest(resource)
+		}
+		doc["items"] = items
+	}
+	return doc
+}
+
+func TransformFullManifest(dec *yaml.Decoder) string {
 	manifest := ""
 	// For each yaml document
 	for {
@@ -167,21 +208,7 @@ func TransformManifest(dec *yaml.Decoder) string {
 			continue
 		}
 
-		kind := doc["kind"].(string)
-		apiVersion := doc["apiVersion"].(string)
-		// If it is a secret, try to convert it
-		if kind == "Secret" && apiVersion == "v1" {
-			// Convert data from base64 and merge stringData with data
-			data := parseStringDataAndData(doc)
-
-			// Find all keyvault variables
-			keyvaultKeys := getKeyvaultVariables(data)
-
-			// Only convert the secrets with references to keyvault secrets
-			if len(keyvaultKeys) > 0 {
-				doc = createExternalSecretObject(data, doc, keyvaultKeys)
-			}
-		}
+		doc = transformManifest(doc)
 		// Create output document
 		var b bytes.Buffer
 		yamlEncoder := yaml.NewEncoder(&b)
@@ -194,8 +221,11 @@ func TransformManifest(dec *yaml.Decoder) string {
 }
 
 func main() {
-	bytes12, _ := io.ReadAll(os.Stdin)
-	dec := yaml.NewDecoder(bytes.NewReader(bytes12))
-	manifest := TransformManifest(dec)
+	stdinBytes, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		panic("ERROR: Could not read ResourceList from STDIN.")
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(stdinBytes))
+	manifest := TransformFullManifest(dec)
 	fmt.Println(manifest)
 }

@@ -130,6 +130,19 @@ func getKeyvaultVariables(data map[string]interface{}) []string {
 	return keyvaultKeys
 }
 
+// Remove duplicates from list
+func removeDuplicate[T comparable](sliceList []T) []T {
+	allKeys := make(map[T]bool)
+	list := []T{}
+	for _, item := range sliceList {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
 // Create an externalsecrets object from the secret and parsed data
 func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys []string) map[string]interface{} {
 	// Create external secret spec
@@ -145,8 +158,11 @@ func createExternalSecretObject(data, doc map[string]interface{}, keyvaultKeys [
 		}
 	}
 
+	// Remove duplicate secret references
+	uniquieKeyvaultKeys := removeDuplicate(keyvaultKeys)
+
 	// Create data remote reference with values
-	for _, key := range keyvaultKeys {
+	for _, key := range uniquieKeyvaultKeys {
 		if !strings.HasPrefix(key, ".") {
 			panic("ERROR: Key is missing '.' prefix '" + key + "'")
 		}
